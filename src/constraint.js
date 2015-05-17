@@ -8,17 +8,58 @@ import c from 'cassowary';
 // TODO figure how to generate constraints from equality of computed properties
 
 
-var solve = function(constraints) {
-    var code = constraints.toString();
+class ConstraintSystem {
     
-    code = code.substring(code.indexOf('{') + 1);
-    code = code.substring(0, code.length - 1);
+    constructor() {
+        this.solver = new c.SimplexSolver();
+        this.variables = {};
+    }
+    
+    addConstraints(fn) {
+        var code = fn.toString();
+        code = code.substring(code.indexOf('{') + 1);
+        code = code.substring(0, code.length - 1);
+        var ast = esprima.parse(code);
 
-    var solver = new c.SimplexSolver();
-    var ast = esprima.parse(code);
-    var variables = {};
+        estraverse.traverse(ast, {
+            enter: node => {
+                if (node.type === "AssignmentExpression") {
+                    var left = this.getOrCreateLval(node.left);
+                    var right = this.buildExpression(node.right);
+                    this.solver.addConstraint(new c.Equation(left, right));
+                }
+            }
+        });
+    }
+    
+    solve() {
+        this.solver.resolve();
+    }
+    
+    suggestValues(fn) {
+        var code = fn.toString();
+        code = code.substring(code.indexOf('{') + 1);
+        code = code.substring(0, code.length - 1);
+        var ast = esprima.parse(code);
 
-    var getOrCreateLval = function(node) {
+        estraverse.traverse(ast, {
+            enter: node => {
+                if (node.type === "AssignmentExpression") {
+                    // TODO: fail if the lval doesn't exist in this.variables
+                    var left = this.getOrCreateLval(node.left);
+                    if (node.right.type === "Literal") {
+                        this.solver.addEditVar(left);
+                        this.solver.suggestValue(left, node.right.value);
+                    } else {
+                        throw "invalid r-value";
+                    }
+                }
+            }
+        });
+    }
+
+    getOrCreateLval(node) {
+        var variables = this.variables;
         var result;
 
         if (node.type === "Identifier") {
@@ -35,37 +76,59 @@ var solve = function(constraints) {
                 if (!variables[name]) {
                     variables[name] = {};
                 }
-                let value = node.property.value;
-                if (!variables[name][value]) {
-                    variables[name][value] = new c.Variable({
-                        name: `${name}[${value}]`
-                    });
+                var prop = node.property;
+                if (prop.type === "Literal") {
+                    let index = prop.value;
+                    if (!variables[name][index]) {
+                        variables[name][index] = new c.Variable({
+                            name: `${name}[${index}]`
+                        });
+                    }
+                    result = variables[name][index];
+                } else if (prop.type === "Identifier") {
+                    let propName = prop.name;
+                    if (!variables[name][propName]) {
+                        variables[name][propName] = new c.Variable({
+                            name: `${name}[${propName}]`
+                        });
+                    }
+                    result = variables[name][propName];
                 }
-                result = variables[name][value];
             }
         }
-      
-        return result;
-    };
 
-    var buildExpression = function(node) {
+        return result;
+    }
+
+    buildExpression(node) {
         var result = new c.Expression();
         if (node.type === "BinaryExpression") {
             var left = node.left;
             var right = node.right;
 
             if (left.type === "Identifier") {
-                result = result.plus(getOrCreateLval(left));
+                result = result.plus(this.getOrCreateLval(left));
             } else if (left.type === "Literal") {
                 result = result.plus(left.value);
+            } else if (left.type === "MemberExpression") {
+                result = result.plus(this.getOrCreateLval(left));
             } else if (left.type === "BinaryExpression") {
                 // TODO implement
             }
+            
+            var lookup = {
+                '+': 'plus',
+                '-': 'minus',
+                '*': 'times',
+                '/': 'divide'
+            };
+            
+            var op = lookup[node.operator];
 
             if (right.type === "Identifier") {
-                result = result.plus(getOrCreateLval(right));
+                result = result[op](this.getOrCreateLval(right));
             } else if (right.type === "Literal") {
-                result = result.plus(new c.Expression(right.value));
+                result = result[op](new c.Expression(right.value));
             } else if (right.type === "BinaryExpression") {
                 // TODO implement
             }
@@ -73,21 +136,8 @@ var solve = function(constraints) {
             result = new c.Expression(node.value);
         }
         return result;
-    };
+    }
     
-    estraverse.traverse(ast, {
-        enter(node, parent) {
-            if (node.type === "AssignmentExpression") {
-                var left = getOrCreateLval(node.left);
-                var right = buildExpression(node.right);
-                solver.addConstraint(new c.Equation(left, right));
-            }
-        }
-    });
+}
 
-    solver.resolve();
-    
-    return variables;
-};
-
-module.exports = solve;
+module.exports = ConstraintSystem;
