@@ -1,6 +1,12 @@
 require('babel/register');
 
 var CS = require('./src/constraint');
+var Rect = require('./src/rect');
+
+require('./src/by_hand');
+
+process.exit(0);
+
 
 var printObject = function(obj, arrayName) {
     Object.keys(obj).forEach(function (key) {
@@ -67,15 +73,23 @@ cs2.suggestValues(function(p1) {
 cs2.solve();
 printObject(cs2.variables);
 
-//cs2.solver.addEditVar(cs2.variables.p2.x);
-//cs2.solver.suggestValue(cs2.variables.p2.x, 100);
-//cs2.solver.resolve();
-//printObject(cs2.variables);
-//
-////cs2.solver.addStay(cs2.variables.p2.x);
-//cs2.solver.addEditVar(cs2.variables.p1.x);
-//cs2.solver.suggestValue(cs2.variables.p1.x, 20);
-//cs2.solver.resolve();
-//printObject(cs2.variables);
+
+
+var cs3 = new CS();
+cs3.addConstraints(function () {
+    
+    var r1 = new Rect(100, 100, 100, 100);
+    var r2 = new Rect(100, 100, 100, 100);
+    
+    r1.top = r2.bottom;
+});
+
+// TODO make the objects constraint system aware
+// TODO need a set of constraints for each object and each method
+// essentially, each object needs to have an ID which we can use to refer to 
+// it by regardless of the name of the variable(s) that have a reference to it
+
+cs3.solve();
+printObject(cs3.variables);
 
 
