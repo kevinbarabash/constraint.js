@@ -60,8 +60,6 @@ let wrap = function(obj, desc) {
         } else if (desc[name] === 'fixed') {
             let value = obj[name];
             let variable = new c.Variable({value});
-            // TODO: rewrite these using equation constraints
-            // TODO: come up with a way to modify these constraints
             solver.addStay(variable);
             obj[cd][name] = variable;
         } else if (desc[name] === 'comp') {
@@ -71,12 +69,39 @@ let wrap = function(obj, desc) {
                 enter(node) {
                     if (node.type === "ReturnStatement") {
                         console.log(node.argument);
-                        let expr = createExpression(node.argument, { this: obj });
+                        let expr = createExpression(node.argument, { "this": obj });
                         obj[cd][name] = expr;
                         console.log(expr.toString());
                     }
                 }
             });
+        }
+    });
+
+    var props = Object.keys(desc).filter(name => {
+        return desc[name] === "var" || desc[name] === "fixed";
+    });
+
+    props.forEach(p => {
+        let desc = Object.getOwnPropertyDescriptor(obj, p);
+        if (desc.hasOwnProperty("value")) {
+            var firstCall = true;
+            Object.defineProperty(obj, p, {
+                get() {
+                    return obj[cd][p].value;
+                },
+                set(value) {
+                    if (firstCall) {
+                        firstCall = false;
+                        solver.addEditVar(obj[cd][p]);
+                    }
+                    solver.suggestValue(obj[cd][p], value);
+                    solver.resolve();
+                }
+            });
+        } else {
+            // TODO wrap existing getters/setters if they exist
+            // I'm not sure if it even makes sense to do this
         }
     });
 };
@@ -93,7 +118,7 @@ let ops = {
     "/": "divide"
 };
 
-var expr = function(val) {
+let expr = function(val) {
     if (val instanceof c.Expression) {
         return val;
     }
@@ -142,15 +167,11 @@ let createExpression = function(node, context) {
 };
 
 var createConstraints = function(fn, ...args) {
-    var code = fn.toString().replace('function', 'function constraints');
-    console.log(code);
-    console.log(args);
-
-    var ast = esprima.parse(code);
-    var func = ast.body[0];
-    console.log(func);
-    var params = func.params.map(p => p.name);
-    var pDict = {};
+    let code = fn.toString().replace('function', 'function constraints');
+    let ast = esprima.parse(code);
+    let func = ast.body[0];
+    let params = func.params.map(p => p.name);
+    let pDict = {};
     for (let i = 0; i < fn.length; i++) {
         pDict[params[i]] = args[i];
     }
@@ -165,12 +186,15 @@ var createConstraints = function(fn, ...args) {
                     let left = createExpression(e.left, pDict);
                     let right = createExpression(e.right, pDict);
                     let eqn = new c.Equation(left, right);
-                    console.log(eqn.toString());
                     solver.addConstraint(eqn);
                 } else if (op === ">") {
                     // create a greater-than constraint
                 } else if (op === "<") {
                     // create a less-than constraint
+                } else if (op === ">=") {
+
+                } else if (op === "<=") {
+
                 }
             }
         }
@@ -199,11 +223,6 @@ createConstraints(function (r1, r2) {
     r2.top - r1.bottom == 10;
 }, r1, r2);
 
-solver.resolve();
-
-update(r1, desc);
-update(r2, desc);
-
 console.log(`r1 = ${r1.toString()}`);
 console.log(`r2 = ${r2.toString()}`);
 
@@ -213,23 +232,11 @@ window.cd = cd;
 
 window.Rect = Rect;
 
-// TODO: make a method to extract these from a descriptor
-var props = ['x', 'y', 'w', 'h'];
-
-// wrap should addEditVars to the solver
-props.forEach(p => {
-    solver.addEditVar(r1[cd][p]);
-    solver.suggestValue(r1[cd][p], r1[p]);
-});
-
-solver.suggestValue(r1[cd].x, 200);
-solver.suggestValue(r1[cd].w, 200);
-solver.resolve();
-
-update(r1, desc);
-update(r2, desc);
-console.log(r1[cd].x.value);
-console.log(r1[cd].w.value);
+r1.x = 200;
+r1.w = 200;
+r1.w = 150; // overrides previous value
+r2.w = 80;  // allows for setting of multiple values
+r2.x = 135; // overrides previous value from a related rectangle
 
 console.log(`r1 = ${r1.toString()}`);
 console.log(`r2 = ${r2.toString()}`);
