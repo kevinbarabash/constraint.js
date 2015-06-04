@@ -46,32 +46,33 @@ let desc = {
     center: 'comp'
 };
 
-let cd = Symbol();
+let symbols = Symbol();
 let solver = new c.SimplexSolver();
 
 // TODO: refactor to be a decorator that's called on the constructor?
 let wrap = function(obj, desc) {
-    obj[cd] = {};
+    obj[symbols] = {};
+    let sym_table = obj[symbols];
 
     Object.keys(desc).forEach(name => {
         if (desc[name] === 'var') {
+            sym_table[name] = Symbol();
             let value = obj[name];
-            obj[cd][name] = new c.Variable({value});
+            obj[sym_table[name]] = new c.Variable({value});
         } else if (desc[name] === 'fixed') {
+            sym_table[name] = Symbol();
             let value = obj[name];
             let variable = new c.Variable({value});
             solver.addStay(variable);
-            obj[cd][name] = variable;
+            obj[sym_table[name]] = variable;
         } else if (desc[name] === 'comp') {
             let code = getGetterCode(Rect, name);
             let ast = esprima.parse(code);
             estraverse.traverse(ast, {
                 enter(node) {
                     if (node.type === "ReturnStatement") {
-                        console.log(node.argument);
-                        let expr = createExpression(node.argument, { "this": obj });
-                        obj[cd][name] = expr;
-                        console.log(expr.toString());
+                        sym_table[name] = Symbol();
+                        obj[sym_table[name]] = createExpression(node.argument, { "this": obj });
                     }
                 }
             });
@@ -82,20 +83,20 @@ let wrap = function(obj, desc) {
         return desc[name] === "var" || desc[name] === "fixed";
     });
 
-    props.forEach(p => {
-        let desc = Object.getOwnPropertyDescriptor(obj, p);
+    props.forEach(name => {
+        let desc = Object.getOwnPropertyDescriptor(obj, name);
         if (desc.hasOwnProperty("value")) {
             var firstCall = true;
-            Object.defineProperty(obj, p, {
+            Object.defineProperty(obj, name, {
                 get() {
-                    return obj[cd][p].value;
+                    return obj[sym_table[name]].value;
                 },
                 set(value) {
                     if (firstCall) {
                         firstCall = false;
-                        solver.addEditVar(obj[cd][p]);
+                        solver.addEditVar(obj[sym_table[name]]);
                     }
-                    solver.suggestValue(obj[cd][p], value);
+                    solver.suggestValue(obj[sym_table[name]], value);
                     solver.resolve();
                 }
             });
@@ -134,7 +135,8 @@ let createExpression = function(node, context) {
             if (prop.type === "Identifier") {
                 if ("this" in context) {
                     let _this = context["this"];
-                    return expr(_this[cd][prop.name]);
+                    let sym_table = _this[symbols];
+                    return expr(_this[sym_table[prop.name]]);
                 } else {
                     throw "'this' not in context";
                 }
@@ -146,7 +148,8 @@ let createExpression = function(node, context) {
                 let objName = obj.name;
                 if (objName in context) {
                     let _obj = context[objName];
-                    return expr(_obj[cd][prop.name]);
+                    let sym_table = _obj[symbols];
+                    return expr(_obj[sym_table[prop.name]]);
                 } else {
                     throw `'${objName}' not in context`;
                 }
@@ -175,7 +178,7 @@ var createConstraints = function(fn, ...args) {
     for (let i = 0; i < fn.length; i++) {
         pDict[params[i]] = args[i];
     }
-    console.log(pDict);
+
     func.body.body.forEach(s => {
         if (s.type === "ExpressionStatement") {
             let e = s.expression;
@@ -201,17 +204,75 @@ var createConstraints = function(fn, ...args) {
     });
 };
 
-// TODO: store the descriptor as part of the object?
-let update = function (obj, desc) {
-    Object.keys(desc).forEach(name => {
-        var type = desc[name];
+//let wrapClass = function(cls, desc) {
+//    // TODO: create a different lookup table
+//    // one is a string -> Symbol table
+//    // we can then use that Symbol to look up stuff on the object or the prototype
+//    class WrappedClass extends cls {
+//        constructor(...args) {
+//            super(...args);
+//
+//            Object.keys(desc).forEach(name => {
+//                if (desc[name] === 'comp') {
+//                    console.log(`name = ${name}`);
+//
+//                    let code = getGetterCode(Rect, name);
+//                    let ast = esprima.parse(code);
+//                    console.log(code);
+//                    estraverse.traverse(ast, {
+//                        enter(node) {
+//                            if (node.type === "ReturnStatement") {
+//                                console.log(`name = ${name}`);
+//                                Object.defineProperty(proto, name, {
+//                                    get() {
+//                                        if (!this[cd][name]) {
+//                                            this[cd][name] = createExpression(node.argument, { "this": this });
+//                                        }
+//                                        return this[cd][name];
+//                                    },
+//                                    enumerable: true
+//                                });
+//                            }
+//                        }
+//                    });
+//                }
+//            });
+//        }
+//    }
+//
+//    var proto = WrappedClass.prototype;
+//
+//    var props = Object.keys(desc).filter(name => {
+//        return desc[name] === "var" || desc[name] === "fixed";
+//    });
+//
+//    props.forEach(p => {
+//        Object.defineProperty(proto, p, {
+//            get() {
+//                return this[cd][p].value;
+//            },
+//            set(value) {
+//                if (!this[cd]) {
+//                    this[cd] = {};
+//                }
+//                if (!this[cd][p]) {
+//                    this[cd][p] = new c.Variable({value});
+//                    if (desc[p] === "fixed") {
+//                        solver.addStay(this[cd][p]);
+//                    }
+//                    solver.addEditVar(this[cd][p]);
+//                    console.log(this[cd][p].name);
+//                }
+//                solver.suggestValue(this[cd][p], value);
+//                solver.resolve();
+//            }
+//        });
+//    });
+//
+//    return WrappedClass;
+//};
 
-        if (type === 'var' || type === 'fixed') {
-            obj[name] = obj[cd][name].value;
-        }
-    });
-};
-
+//var CRect = wrapClass(Rect, desc);
 let r1 = new Rect(50, 50, 100, 25);
 let r2 = new Rect(50, 50, 75, 75);
 
@@ -228,7 +289,6 @@ console.log(`r2 = ${r2.toString()}`);
 
 window.r1 = r1;
 window.r2 = r2;
-window.cd = cd;
 
 window.Rect = Rect;
 
