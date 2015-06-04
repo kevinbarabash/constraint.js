@@ -2,7 +2,29 @@ let esprima = require('esprima');
 let estraverse = require('estraverse');
 let c = require('cassowary');
 
+let getGetterCode = function(cls, name) {
+    let desc = Object.getOwnPropertyDescriptor(cls.prototype, name);
+    return desc.get.toString().replace(`function`, `function ${name}`);
+};
 
+let symbols = Symbol();
+let solver = new c.SimplexSolver();
+
+// use a decorator with the descriptor
+let desc = {
+    x: 'var',
+    y: 'var',
+    w: 'fixed',
+    h: 'fixed',
+    left: 'comp',
+    right: 'comp',
+    top: 'comp',
+    bottom: 'comp',
+    center: 'comp'
+};
+
+// TODO: pass solver as param to the decorator too
+@wrapClass(desc)
 class Rect {
     constructor(x, y, w, h) {
         Object.assign(this, { x, y, w, h });
@@ -33,24 +55,13 @@ class Rect {
     }
 }
 
-// use a decorator with the descriptor
-let desc = {
-    x: 'var',
-    y: 'var',
-    w: 'fixed',
-    h: 'fixed',
-    left: 'comp',
-    right: 'comp',
-    top: 'comp',
-    bottom: 'comp',
-    center: 'comp'
-};
-
-let symbols = Symbol();
-let solver = new c.SimplexSolver();
-
-// TODO: refactor to be a decorator that's called on the constructor?
+// Keep this because someone may want to wrap dumb data
 let wrap = function(obj, desc) {
+    // guard against re-wrapping
+    if (obj[symbols]) {
+        return;
+    }
+
     obj[symbols] = {};
     let sym_table = obj[symbols];
 
@@ -105,11 +116,8 @@ let wrap = function(obj, desc) {
             // I'm not sure if it even makes sense to do this
         }
     });
-};
 
-let getGetterCode = function(cls, name) {
-    let desc = Object.getOwnPropertyDescriptor(cls.prototype, name);
-    return desc.get.toString().replace(`function`, `function ${name}`);
+    return obj;
 };
 
 let ops = {
@@ -204,89 +212,74 @@ var createConstraints = function(fn, ...args) {
     });
 };
 
-let wrapClass = function(cls, desc) {
-    // TODO: create a different lookup table
-    // one is a string -> Symbol table
-    // we can then use that Symbol to look up stuff on the object or the prototype
-    class WrappedClass extends cls {
-        constructor(...args) {
-            super(...args);
-        }
-    }
+function wrapClass(desc) {
+    return function decorator(target) {
+        var proto = target.prototype;
 
-    var proto = WrappedClass.prototype;
+        // we only need one copy because this is just a lookup for the symbols
+        // that we need to refernce c.Variables/c.Expressions that can be on
+        // either this (c.Variables) or the prototype (c.Expressions)
+        proto[symbols] = {};
+        var symtable = proto[symbols];
 
-    // we only need one copy because this is just a lookup for the symbols
-    // that we need to refernce c.Variables/c.Expressions that can be on
-    // either this (c.Variables) or the prototype (c.Expressions)
-    proto[symbols] = {};
-    var symtable = proto[symbols];
+        Object.keys(desc).forEach(name => {
+            symtable[name] = Symbol();
+        });
 
-    Object.keys(desc).forEach(name => {
-        symtable[name] = Symbol();
-    });
+        var props = Object.keys(desc).filter(name => {
+            return desc[name] === "var" || desc[name] === "fixed";
+        });
 
-    var props = Object.keys(desc).filter(name => {
-        return desc[name] === "var" || desc[name] === "fixed";
-    });
-
-    props.forEach(name => {
-        let sym = symtable[name];
-        Object.defineProperty(proto, name, {
-            get() {
-                return this[sym].value;
-            },
-            set(value) {
-                if (!this[sym]) {
-                    this[sym] = new c.Variable({value});
-                    if (desc[name] === "fixed") {
-                        solver.addStay(this[sym]);
+        props.forEach(name => {
+            let sym = symtable[name];
+            Object.defineProperty(proto, name, {
+                get() {
+                    return this[sym].value;
+                },
+                set(value) {
+                    if (!this[sym]) {
+                        this[sym] = new c.Variable({value});
+                        if (desc[name] === "fixed") {
+                            solver.addStay(this[sym]);
+                        }
+                        solver.addEditVar(this[sym]);
+                        console.log(this[sym].name);
                     }
-                    solver.addEditVar(this[sym]);
-                    console.log(this[sym].name);
+                    solver.suggestValue(this[sym], value);
+                    solver.resolve();
                 }
-                solver.suggestValue(this[sym], value);
-                solver.resolve();
-            }
+            });
         });
-    });
 
-    var getters = Object.keys(desc).filter(name => {
-        return desc[name] === "comp";
-    });
+        var getters = Object.keys(desc).filter(name => {
+            return desc[name] === "comp";
+        });
 
-    getters.forEach(name => {
-        let sym = symtable[name];
-        let sym_memo = Symbol();
-
-        let code = getGetterCode(cls, name);
-        let ast = esprima.parse(code);
-        console.log(name);
-        console.log(code);
-        estraverse.traverse(ast, {
-            enter(node) {
-                if (node.type === "ReturnStatement") {
-                    console.log(`name = ${name}`);
-                    Object.defineProperty(proto, sym, {
-                        get() {
-                            if (!this[sym_memo]) {
-                                this[sym_memo] = createExpression(node.argument, { "this": this });
+        getters.forEach(name => {
+            let sym = symtable[name];
+            let sym_memo = Symbol();
+            let code = getGetterCode(target, name);
+            let ast = esprima.parse(code);
+            estraverse.traverse(ast, {
+                enter(node) {
+                    if (node.type === "ReturnStatement") {
+                        Object.defineProperty(proto, sym, {
+                            get() {
+                                if (!this[sym_memo]) {
+                                    this[sym_memo] = createExpression(node.argument, { "this": this });
+                                }
+                                return this[sym_memo];
                             }
-                            return this[sym_memo];
-                        },
-                        enumerable: true
-                    });
+                        });
+                    }
                 }
-            }
+            });
         });
-    });
+    }
+}
 
-    return WrappedClass;
-};
-
-var CRect = wrapClass(Rect, desc);
-let r1 = new CRect(50, 50, 100, 25);
-let r2 = new CRect(50, 50, 75, 75);
+let r1 = new Rect(50, 50, 100, 25);
+let r2 = new Rect(50, 50, 75, 75);
 
 //wrap(r1, desc);
 //wrap(r2, desc);
