@@ -204,80 +204,92 @@ var createConstraints = function(fn, ...args) {
     });
 };
 
-//let wrapClass = function(cls, desc) {
-//    // TODO: create a different lookup table
-//    // one is a string -> Symbol table
-//    // we can then use that Symbol to look up stuff on the object or the prototype
-//    class WrappedClass extends cls {
-//        constructor(...args) {
-//            super(...args);
-//
-//            Object.keys(desc).forEach(name => {
-//                if (desc[name] === 'comp') {
-//                    console.log(`name = ${name}`);
-//
-//                    let code = getGetterCode(Rect, name);
-//                    let ast = esprima.parse(code);
-//                    console.log(code);
-//                    estraverse.traverse(ast, {
-//                        enter(node) {
-//                            if (node.type === "ReturnStatement") {
-//                                console.log(`name = ${name}`);
-//                                Object.defineProperty(proto, name, {
-//                                    get() {
-//                                        if (!this[cd][name]) {
-//                                            this[cd][name] = createExpression(node.argument, { "this": this });
-//                                        }
-//                                        return this[cd][name];
-//                                    },
-//                                    enumerable: true
-//                                });
-//                            }
-//                        }
-//                    });
-//                }
-//            });
-//        }
-//    }
-//
-//    var proto = WrappedClass.prototype;
-//
-//    var props = Object.keys(desc).filter(name => {
-//        return desc[name] === "var" || desc[name] === "fixed";
-//    });
-//
-//    props.forEach(p => {
-//        Object.defineProperty(proto, p, {
-//            get() {
-//                return this[cd][p].value;
-//            },
-//            set(value) {
-//                if (!this[cd]) {
-//                    this[cd] = {};
-//                }
-//                if (!this[cd][p]) {
-//                    this[cd][p] = new c.Variable({value});
-//                    if (desc[p] === "fixed") {
-//                        solver.addStay(this[cd][p]);
-//                    }
-//                    solver.addEditVar(this[cd][p]);
-//                    console.log(this[cd][p].name);
-//                }
-//                solver.suggestValue(this[cd][p], value);
-//                solver.resolve();
-//            }
-//        });
-//    });
-//
-//    return WrappedClass;
-//};
+let wrapClass = function(cls, desc) {
+    // TODO: create a different lookup table
+    // one is a string -> Symbol table
+    // we can then use that Symbol to look up stuff on the object or the prototype
+    class WrappedClass extends cls {
+        constructor(...args) {
+            super(...args);
+        }
+    }
 
-//var CRect = wrapClass(Rect, desc);
-let r1 = new Rect(50, 50, 100, 25);
-let r2 = new Rect(50, 50, 75, 75);
+    var proto = WrappedClass.prototype;
 
-wrap(r1, desc);
-wrap(r2, desc);
+    // we only need one copy because this is just a lookup for the symbols
+    // that we need to refernce c.Variables/c.Expressions that can be on
+    // either this (c.Variables) or the prototype (c.Expressions)
+    proto[symbols] = {};
+    var symtable = proto[symbols];
+
+    Object.keys(desc).forEach(name => {
+        symtable[name] = Symbol();
+    });
+
+    var props = Object.keys(desc).filter(name => {
+        return desc[name] === "var" || desc[name] === "fixed";
+    });
+
+    props.forEach(name => {
+        let sym = symtable[name];
+        Object.defineProperty(proto, name, {
+            get() {
+                return this[sym].value;
+            },
+            set(value) {
+                if (!this[sym]) {
+                    this[sym] = new c.Variable({value});
+                    if (desc[name] === "fixed") {
+                        solver.addStay(this[sym]);
+                    }
+                    solver.addEditVar(this[sym]);
+                    console.log(this[sym].name);
+                }
+                solver.suggestValue(this[sym], value);
+                solver.resolve();
+            }
+        });
+    });
+
+    var getters = Object.keys(desc).filter(name => {
+        return desc[name] === "comp";
+    });
+
+    getters.forEach(name => {
+        let sym = symtable[name];
+        let sym_memo = Symbol();
+
+        let code = getGetterCode(cls, name);
+        let ast = esprima.parse(code);
+        console.log(name);
+        console.log(code);
+        estraverse.traverse(ast, {
+            enter(node) {
+                if (node.type === "ReturnStatement") {
+                    console.log(`name = ${name}`);
+                    Object.defineProperty(proto, sym, {
+                        get() {
+                            if (!this[sym_memo]) {
+                                this[sym_memo] = createExpression(node.argument, { "this": this });
+                            }
+                            return this[sym_memo];
+                        },
+                        enumerable: true
+                    });
+                }
+            }
+        });
+    });
+
+    return WrappedClass;
+};
+
+var CRect = wrapClass(Rect, desc);
+let r1 = new CRect(50, 50, 100, 25);
+let r2 = new CRect(50, 50, 75, 75);
+
+//wrap(r1, desc);
+//wrap(r2, desc);
 
 createConstraints(function (r1, r2) {
     r1.center == r2.center;
