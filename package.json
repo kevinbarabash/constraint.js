@@ -18,6 +18,7 @@
     "esprima": "^2.2.0",
     "estraverse": "^4.1.0",
     "json-loader": "^0.5.2",
+    "mocha": "^2.2.5",
     "webpack": "^1.9.10"
   }
 }
