@@ -66,12 +66,11 @@ let wrap = function(obj, desc) {
     let sym_table = obj[symbols];
 
     Object.keys(desc).forEach(name => {
+        sym_table[name] = Symbol(name);
         if (desc[name] === 'var') {
-            sym_table[name] = Symbol();
             let value = obj[name];
             obj[sym_table[name]] = new c.Variable({value});
         } else if (desc[name] === 'fixed') {
-            sym_table[name] = Symbol();
             let value = obj[name];
             let variable = new c.Variable({value});
             solver.addStay(variable);
@@ -82,7 +81,6 @@ let wrap = function(obj, desc) {
             estraverse.traverse(ast, {
                 enter(node) {
                     if (node.type === "ReturnStatement") {
-                        sym_table[name] = Symbol();
                         obj[sym_table[name]] = createExpression(node.argument, { "this": obj });
                     }
                 }
@@ -223,7 +221,7 @@ function wrapClass(desc) {
         var symtable = proto[symbols];
 
         Object.keys(desc).forEach(name => {
-            symtable[name] = Symbol();
+            symtable[name] = Symbol(name);
         });
 
         var props = Object.keys(desc).filter(name => {
@@ -232,6 +230,7 @@ function wrapClass(desc) {
 
         props.forEach(name => {
             let sym = symtable[name];
+            let firstCall = true;
             Object.defineProperty(proto, name, {
                 get() {
                     return this[sym].value;
@@ -242,11 +241,13 @@ function wrapClass(desc) {
                         if (desc[name] === "fixed") {
                             solver.addStay(this[sym]);
                         }
-                        solver.addEditVar(this[sym]);
-                        console.log(this[sym].name);
+                    } else {
+                        if (firstCall) {
+                            solver.addEditVar(this[sym]);
+                        }
+                        solver.suggestValue(this[sym], value);
+                        solver.resolve();
                     }
-                    solver.suggestValue(this[sym], value);
-                    solver.resolve();
                 }
             });
         });
@@ -297,6 +298,7 @@ window.r2 = r2;
 
 window.Rect = Rect;
 
+// TODO: start writing tests
 r1.x = 200;
 r1.w = 200;
 r1.w = 150; // overrides previous value
