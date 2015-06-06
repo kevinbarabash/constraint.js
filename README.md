@@ -166,14 +166,14 @@ variables as properties, wrap that object, and create constraints.
 
 ## Future Work
 
-[ ] moar tests
-[ ] comparison operators listed above
-[ ] decorators for methods (which should replace the need for the descriptor)
-[ ] support more expressions within `addConstraint`
-  [ ] array indexing
-  [ ] looping constructs
-[ ] improve error handling
-[ ] get current constraints
-  [ ] all
-  [ ] for a particular property (on an object)
-[ ] remove constraints
+- [ ] moar tests
+- [ ] comparison operators listed above
+- [ ] decorators for methods (which should replace the need for the descriptor)
+- [ ] support more expressions within `addConstraint`
+  - [ ] array indexing
+  - [ ] looping constructs
+- [ ] improve error handling
+- [ ] get current constraints
+  - [ ] all
+  - [ ] for a particular property (on an object)
+- [ ] remove constraints
