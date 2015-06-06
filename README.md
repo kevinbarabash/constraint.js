@@ -101,13 +101,13 @@ must be in the same order.
     c.addConstraints(function (r1, r2) {
         r2.y == r1.bottom;
         r2.x == r1.right;
-    }, r2, r1); // BAD
+    }, r2, r1); // BAD - r1 and r2 have been swapped
     
 The second call to `addConstraints` is equivalent to:
 
     c.addConstraints(function (r1, r2) {
-        r1.y == r2.bottom;  // r1 and r2 have been swapped
-        r1.x == r2.right;   // r1 and r2 have been swapped
+        r1.y == r2.bottom;
+        r1.x == r2.right;
     }, r1, r2);
     
 There's also a handy decorator syntax that you can use if you're using a browser
