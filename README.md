@@ -26,7 +26,24 @@ the constraints to ```addConstraints```.
     console.log(r1);    // 
     console.log(r2);    //
 
+## Motivation
+
+It's much easier to describe a relation between expressions than it is to 
+figure the code to enforce that relationship each time one of the variables in 
+the relation changes.  Describe the relationships between properties or 
+expressions also makes the intent clearer.
+
+The problem however, is that constraint solvers (at least cassowary) requires
+a developer to write a lot of boilerplate code to not only set up constraints
+but also update them and update variables on existing objects.
+
+Some of this boilerplate can be avoided in client code by embedded library
+classes with the boilerplate.  Unfortunately, if you want to use existing 
+libraries this would require modifying the libraries.  Moreover, it doesn't
+fix the situation where you have POJOs (Plain Old Javascript Objects).
+
 ## Documentation
+
 Descriptors specify which properties to create variables or expressions for 
 within the constraint solver.  Each key should match a property on the object
 or class being wrapped.
@@ -163,6 +180,25 @@ variables as properties, wrap that object, and create constraints.
     obj.x = 50;
     
     console.log(obj);                   // { x:50, y:100 }
+    
+Computed properties containing only a single return statement are supported.
+    
+## Implmentation Details
+
+### Symbols
+
+The wrap functions modify existing objects and classes in such a way that they
+won't interfere with their operation.  This is done by adding properties using
+Symbols as computed property names.  Symbols prevent the possibility of 
+collision with existing properties will protect them from be accidentally 
+clobbered by other code.
+
+### Code as data
+
+Calling .toString() on a function reference returns the source code for that
+function.  The source code for individual functions is parsed using [esprima](https://github.com/ariya/esprima).
+Contraints are derived from expressions within the AST.  This technique is used
+for "comp" properties when wrapping objects/classes and by `addConstraints`.
 
 ## Future Work
 
