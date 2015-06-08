@@ -10,7 +10,7 @@ var r2 = new Rect(50, 50, 75, 75);
 //wrap(r1, desc);
 //wrap(r2, desc);
 
-c.createConstraints(function (r1, r2) {
+c.addConstraints(function (r1, r2) {
     r1.center == r2.center;
     r2.top - r1.bottom == 10;
 }, r1, r2);

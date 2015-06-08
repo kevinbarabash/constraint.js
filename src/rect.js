@@ -6,15 +6,15 @@ let desc = {
     y: 'var',
     w: 'fixed',
     h: 'fixed',
-    left: 'comp',
-    right: 'comp',
-    top: 'comp',
-    bottom: 'comp',
-    center: 'comp'
+    left: 'getter',
+    right: 'getter',
+    top: 'getter',
+    bottom: 'getter',
+    center: 'getter'
 };
 
 // TODO: pass solver as param to the decorator too
-@c.wrapClass(desc)
+@c.decorateClass(desc)
 class Rect {
     constructor(x, y, w, h) {
         Object.assign(this, { x, y, w, h });

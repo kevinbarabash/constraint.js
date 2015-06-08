@@ -212,4 +212,6 @@ for "comp" properties when wrapping objects/classes and by `addConstraints`.
 - [ ] get current constraints
   - [ ] all
   - [ ] for a particular property (on an object)
-- [ ] remove constraints
+- [ ] ability to remove constraints
+- [ ] allow different objects to be in separate solvers
+  - [ ] disallow constraints between objects in separate solvers

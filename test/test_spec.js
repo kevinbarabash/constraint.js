@@ -60,7 +60,7 @@ describe("constraint", function() {
             var r1 = new Rect(50, 50, 100, 25);
             var r2 = new Rect(50, 50, 75, 75);
 
-            c.createConstraints(function (r1, r2) {
+            c.addConstraints(function (r1, r2) {
                 r1.center == r2.center;
                 r2.top - r1.bottom == 10;
             }, r1, r2);
@@ -73,7 +73,7 @@ describe("constraint", function() {
             var r1 = new Rect(50, 50, 100, 25);
             var r2 = new Rect(50, 50, 75, 75);
 
-            c.createConstraints(function (r1, r2) {
+            c.addConstraints(function (r1, r2) {
                 r1.center == r2.center;
                 r2.top - r1.bottom == 10;
             }, r1, r2);
@@ -87,7 +87,7 @@ describe("constraint", function() {
             var r1 = new Rect(50, 50, 100, 25);
             var r2 = new Rect(50, 50, 75, 75);
 
-            c.createConstraints(function (r1, r2) {
+            c.addConstraints(function (r1, r2) {
                 r1.center == r2.center;
                 r2.top - r1.bottom == 10;
             }, r1, r2);
@@ -102,7 +102,7 @@ describe("constraint", function() {
             var r1 = new Rect(50, 50, 100, 25);
             var r2 = new Rect(50, 50, 75, 75);
 
-            c.createConstraints(function (r1, r2) {
+            c.addConstraints(function (r1, r2) {
                 r1.center == r2.center;
                 r2.top - r1.bottom == 10;
             }, r1, r2);
@@ -117,7 +117,7 @@ describe("constraint", function() {
             var r1 = new Rect(50, 50, 100, 25);
             var r2 = new Rect(50, 50, 75, 75);
 
-            c.createConstraints(function (r1, r2) {
+            c.addConstraints(function (r1, r2) {
                 r1.center == r2.center;
                 r2.top - r1.bottom == 10;
             }, r1, r2);
@@ -129,5 +129,69 @@ describe("constraint", function() {
         });
 
         // TODO moar tests
+    });
+
+    describe("wrapping objects", function () {
+        it("should wrap getters on the prototype", function () {
+            function Foo(a, b) {
+                this.a = a;
+                this.b = b;
+            }
+
+            Object.defineProperty(Foo.prototype, "sum", {
+                get: function() {
+                    return this.a + this.b;
+                }
+            });
+
+            var foo = new Foo(0, 0);
+            c.wrapObject(foo, { a: "var", b: "var", sum: "getter" });
+
+            foo.a = 5;
+            foo.b = 10;
+            assert.equal(foo.sum, 15);
+        });
+
+        it("should addConstraints with getters on the prototype", function () {
+            function Foo(a, b) {
+                this.a = a;
+                this.b = b;
+            }
+
+            Object.defineProperty(Foo.prototype, "sum", {
+                get: function() {
+                    return this.a + this.b;
+                }
+            });
+
+            var foo = new Foo(0, 0);
+            c.wrapObject(foo, { a: "var", b: "var", sum: "getter" });
+
+            c.addConstraints(function (foo) {
+                foo.sum == 42;
+            }, foo);
+
+            assert.equal(foo.a + foo.b, 42);
+        });
+
+        it("should add 'var' constraints for all props by default", function () {
+            var point = { x: 5, y: 10, z: 20 };
+            c.wrapObject(point);
+
+            assert.equal(point.x, 5);
+            assert.equal(point.y, 10);
+            assert.equal(point.z, 20);
+
+            c.addConstraints(function (p) {
+                p.x == 2 * p.y;
+                p.z == 3 * p.x;
+            }, point);
+
+            point.y = 100;
+
+            assert.equal(point.y, 100);
+            assert.equal(point.x, 200);
+            assert.equal(point.z, 600);
+        });
     });
 });
